@@ -1,5 +1,6 @@
 "use client";
-import { ArrowUpRight, Fish, Anchor, Info } from "lucide-react";
+import { FishIcon } from "@/components/fish-icon";
+import { ArrowUpRight, Anchor, Info } from "lucide-react";
 import { tackle } from "@/lib/tackle";
 import { species, isColdwater, type Species } from "@/lib/prediction";
 export function TackleGuide({
@@ -21,7 +22,7 @@ export function TackleGuide({
           </p>
         </div>
         <span className="tackle-species">
-          <Fish size={18} />
+          <FishIcon size={18} />
           {isColdwater(target) ? "Cold-water approach" : "Match the forage"}
         </span>
       </div>

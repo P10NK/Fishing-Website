@@ -1,7 +1,7 @@
 import { storage, storageError } from "@/lib/storage";
 export async function POST(r: Request) {
   try {
-    const { owner, bucket } = storage(r);
+    const { owner, bucket } = await storage(r);
     if (!bucket) throw Error("Unavailable");
     if (Number(r.headers.get("content-length")) > 5500000)
       return Response.json(
@@ -48,7 +48,7 @@ export async function POST(r: Request) {
 }
 export async function GET(r: Request) {
   try {
-    const { owner, bucket } = storage(r);
+    const { owner, bucket } = await storage(r);
     const key = new URL(r.url).searchParams.get("key") ?? "";
     if (!key.startsWith(encodeURIComponent(owner) + "/"))
       return new Response("Not found", { status: 404 });

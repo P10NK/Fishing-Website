@@ -4,7 +4,7 @@ A mobile-first fishing forecast and private catch journal. React 19 + TypeScript
 
 The grouped picker includes 17 targets, including Chinook and coho lake salmon, kokanee, lake trout, brown trout, pike, musky, perch and bluegill. Each has three lure/bait suggestions with presentation tips, starting sizes and fisheries-agency references. **Use in catch log** prefills the bait. These are general starting points, not catch guarantees.
 
-For local journal access, click **Sign in to your journal**. This activates the loopback-only development identity described below.
+Journal access uses Google sign-in. Create a Google Cloud OAuth Web application with redirect URIs `https://castlinefishing.com/api/auth/google/callback` and `http://localhost:5173/api/auth/google/callback`. Configure `APP_ORIGIN`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and a stable 32-character or longer `AUTH_SECRET` in Sites for production and in ignored `.dev.vars` for local development. Keep the client secret and auth secret out of source control.
 
 ## Run locally
 
@@ -16,12 +16,12 @@ pnpm db:local
 pnpm dev
 ```
 
-Open http://localhost:5173. The starter injects a development-only identity (`local_seedy`) on loopback. Local D1/R2 persist in `.wrangler/state`. Production relies on the Sites dispatcher’s authenticated identity; records and photo reads are scoped to that identity. Never expose the development server publicly.
+Open http://localhost:5173. Local D1/R2 persist in `.wrangler/state`. Records and photo reads are scoped to the verified Google account. For the API smoke test, set `TEST_AUTH_SECRET` to the same local `AUTH_SECRET`; it creates an isolated test session and removes its test records. Never expose the development server publicly.
 
 ```sh
 pnpm test
 pnpm typecheck
-pnpm test:api   # with the development server running; removes its test records
+pnpm test:api   # with the development server running and TEST_AUTH_SECRET set
 pnpm build
 ```
 

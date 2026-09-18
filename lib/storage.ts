@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
-export function storage(request: Request) {
-  const owner = request.headers.get("oai-authenticated-user-id");
+import { sessionOwner } from "@/lib/google-auth";
+export async function storage(request: Request) {
+  const owner = await sessionOwner(request, env.AUTH_SECRET);
   if (!owner) throw new Error("Unauthorized");
   if (!env.DB) throw new Error("Storage unavailable");
   return {

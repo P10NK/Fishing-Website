@@ -1,8 +1,8 @@
 "use client";
+import { FishIcon } from "@/components/fish-icon";
 import {
   Activity,
   Bell,
-  Fish,
   Gauge,
   Radio,
   Thermometer,
@@ -180,7 +180,7 @@ export function RegionalSignals({
             </article>
             <article className="signal-card">
               <div className="signal-card-top">
-                <span className="signal-icon"><Fish size={17} /></span>
+                <span className="signal-icon"><FishIcon size={17} /></span>
                 <SignalState status={data.dnr.status} />
               </div>
               <small>Wisconsin DNR habitat layers</small>

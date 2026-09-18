@@ -1,7 +1,9 @@
 "use client";
+import { BRAND_SLOGAN, BRAND_DESCRIPTION } from "@/lib/brand";
+import { FishIcon } from "@/components/fish-icon";
+import Image from "next/image";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Fish,
   MapPin,
   ArrowUpRight,
   Plus,
@@ -22,6 +24,7 @@ import {
   RefreshCw,
   Info,
   CloudRain,
+  Thermometer,
 } from "lucide-react";
 import { FishingMap } from "@/components/fishing-map";
 import { WaterEvidence } from "@/components/water-evidence";
@@ -100,7 +103,7 @@ function SpeciesSelect({
   return (
     <Select value={value} onValueChange={(v) => onChange(v as Species)}>
       <SelectTrigger className="species-select" aria-label="Target species">
-        <Fish size={19} />
+        <FishIcon size={19} />
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
@@ -119,6 +122,39 @@ function SpeciesSelect({
   );
 }
 type ForecastMode = "water" | "fish";
+function directionsUrl(water: Water, origin: Place | null) {
+  const params = new URLSearchParams({ api: "1", destination: `${water.lat},${water.lon}` });
+  if (origin) params.set("origin", `${origin.lat},${origin.lon}`);
+  return `https://www.google.com/maps/dir/?${params}`;
+}
+function waterDistanceLabel(origin: Place, water: Water) {
+  return origin.lat && origin.lon && water.coordinatesAvailable !== false && water.lat && water.lon
+    ? `${distance(origin, water).toFixed(1)} mi away`
+    : "Location unavailable";
+}
+function LocationPanel({ location, county, selected, locating, status, onLocate }: {
+  location: Place | null;
+  county: string | null;
+  selected: Water;
+  locating: boolean;
+  status: string;
+  onLocate: () => void;
+}) {
+  const hasWater = selected.coordinatesAvailable !== false && Boolean(selected.lat && selected.lon);
+  return <div className="location-panel">
+    <div>
+      <strong><MapPin size={17} /> {location ? "You are here" : "See where you are"}</strong>
+      <p role="status">{status || (location ? `${county ? `${county} County, Wisconsin` : "Position found"}` : "Show your position relative to this county and its waters.")}</p>
+      {location && <p>{hasWater ? `${distance(location, selected).toFixed(1)} mi straight line to ${selected.name}` : "Choose a mapped water to compare distances."}</p>}
+    </div>
+    <button type="button" className="secondary compact" onClick={onLocate} disabled={locating}>
+      <Navigation size={16} /> {locating ? "Locating…" : location ? "Update location" : "Use my location"}
+    </button>
+    {hasWater && <a className="secondary compact" href={directionsUrl(selected, location)} target="_blank" rel="noreferrer">
+      <Navigation size={16} /> Google Maps directions
+    </a>}
+  </div>;
+}
 function ForecastModeSelect({
   value,
   onChange,
@@ -142,7 +178,7 @@ function ForecastModeSelect({
         aria-pressed={value === "fish"}
         onClick={() => onChange("fish")}
       >
-        <Fish size={16} /> Target fish
+        <FishIcon size={16} /> Target fish
       </button>
     </div>
   );
@@ -152,6 +188,10 @@ export default function Home() {
   const [countyReady, setCountyReady] = useState(false);
   const [countyBusy, setCountyBusy] = useState(true);
   const [countyMessage, setCountyMessage] = useState("");
+  const [userLocation, setUserLocation] = useState<Place | null>(null);
+  const [locationCounty, setLocationCounty] = useState<string | null>(null);
+  const [locationStatus, setLocationStatus] = useState("");
+  const [locating, setLocating] = useState(false);
   const [fishMessage, setFishMessage] = useState("");
   useEffect(() => {
     try { const saved = localStorage.getItem("castline.county"); if (wisconsinCounties.some(c => c === saved)) setCounty(saved!); } catch {}
@@ -165,6 +205,7 @@ export default function Home() {
     name: string;
   } | null>(null);
   const [needsSignIn, setNeedsSignIn] = useState(false);
+  const [signedIn, setSignedIn] = useState(false);
   const [tides, setTides] = useState<Tides>({
     hours: [],
     source: "Tides not loaded",
@@ -188,7 +229,7 @@ export default function Home() {
     [waters, setWaters] = useState<Water[]>([]),
     [selected, setSelected] = useState<Water>({id: "county", name: "Dane County", county: "Dane", lat: 0, lon: 0, kind: "County", source: "County selection"}),
     [waterStatus, setWaterStatus] = useState(
-      "Lakes.xlsx · loading water directory",
+      "Loading water directory…",
     ),
     [searchOpen, setSearchOpen] = useState(false),
     [query, setQuery] = useState(""),
@@ -261,7 +302,7 @@ export default function Home() {
       .then(payload => {
         if (controller.signal.aborted) return;
         setWaters(payload.waters);
-        const message = payload.waters.length ? payload.source + " · Imported " + new Date(payload.fetchedAt).toLocaleDateString() : "No waters assigned to this county in Lakes.xlsx.";
+        const message = payload.waters.length ? "Water directory · Updated " + new Date(payload.fetchedAt).toLocaleDateString() : "No waters assigned to this county.";
         setCountyMessage([message, ...(payload.warnings ?? [])].join(" ")); setWaterStatus(message);
         let saved = ""; try { saved = localStorage.getItem("castline.water." + county) ?? ""; } catch {}
         const water = payload.waters.find(w => w.id === saved) ?? payload.waters[0];
@@ -317,9 +358,12 @@ export default function Home() {
       .then((d) => {
         setRecords(d.records);
         setStorageNotice("");
+        setNeedsSignIn(false);
+        setSignedIn(true);
       })
       .catch((e) => {
         setNeedsSignIn(e.status === 401);
+        setSignedIn(false);
         setStorageNotice(
           e.status === 401
             ? "Sign in to save your catches and favorite waters."
@@ -554,26 +598,57 @@ export default function Home() {
     return () => lifecycle.abort();
   }, []);
   function locate() {
-    setNotice("Locating you…");
+    setLocating(true);
+    setLocationStatus("Locating you…");
+    setNotice("");
     if (!navigator.geolocation) {
-      setNotice("Location is not supported. Search for a town.");
+      setLocating(false);
+      setLocationStatus("Location is not supported by this browser.");
       return;
     }
     navigator.geolocation.getCurrentPosition(
-      (p) => {
-        setPlace({
+      async (p) => {
+        const here = {
           name: "Your location",
           lat: p.coords.latitude,
           lon: p.coords.longitude,
-        });
+        };
+        setUserLocation(here);
         setSearchOpen(false);
-        setNotice("");
+        setLocationStatus("Finding your county…");
+        try {
+          const response = await fetch(`/api/location-county?lat=${here.lat}&lon=${here.lon}`, { cache: "no-store" });
+          if (!response.ok) throw new Error("County lookup failed");
+          const result = await response.json() as { county: string | null; state: string | null; estimated: boolean };
+          setLocationCounty(result.county);
+          if (result.county) {
+            setCounty(result.county);
+            setLocationStatus(result.estimated
+              ? `Likely ${result.county} County, Wisconsin (estimated from nearby waters). The map shows your position.`
+              : `You are in ${result.county} County, Wisconsin. The map shows your position and selected water.`);
+          } else {
+            setLocationStatus(result.state
+              ? `You are in ${result.state}. Choose a Wisconsin county to compare waters.`
+              : "Your county could not be identified. Your map pin is still available.");
+          }
+        } catch {
+          setLocationCounty(null);
+          setLocationStatus("Your map pin is available, but county lookup failed. Choose a county manually.");
+        } finally {
+          setLocating(false);
+        }
       },
-      () =>
-        setNotice(
-          "Location unavailable or permission denied. Search for a town instead.",
-        ),
-      { timeout: 12000 },
+      (error) => {
+        setLocating(false);
+        const message = error.code === 1
+          ? "Location access was denied. Allow location for this site in your browser, then try again."
+          : error.code === 3
+            ? "Location timed out. Check device location settings and try again."
+            : "Device location is unavailable. Check device location settings or try another browser.";
+        setLocationStatus(message);
+        setNotice(message);
+      },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 },
     );
   }
   async function toggleFavorite(w: Water) {
@@ -661,12 +736,10 @@ export default function Home() {
     <div className="app-shell">
       <aside className="rail">
         <a href="#" className="brand">
-          <span>
-            <Fish />
-          </span>
+          <Image src="/castline-logo.svg" alt="" width={39} height={39} className="brand-logo" unoptimized />
           castline<span className="brand-dot">.</span>
         </a>
-        <p className="eyebrow rail-label">YOUR NEXT GOOD DAY</p>
+        <p className="eyebrow rail-label">{BRAND_SLOGAN}</p>
         <nav aria-label="Primary navigation">
           {[
             { id: "forecast", label: "Fishing forecast", icon: Compass },
@@ -690,17 +763,10 @@ export default function Home() {
         </nav>
         <div className="rail-bottom">
           <div className="mini-logo">
-            <Fish size={24} />
+            <Image src="/castline-logo.svg" alt="Castline" width={32} height={32} className="mini-logo-image" unoptimized />
           </div>
-          <h3>
-            A little knowledge.
-            <br />A better day outside.
-          </h3>
-          <p>
-            Read the water.
-            <br />
-            Find your window.
-          </p>
+          <h3>{BRAND_SLOGAN}</h3>
+          <p>{BRAND_DESCRIPTION}</p>
           <button onClick={() => setInfo(true)}>
             <Info size={16} /> How predictions work
           </button>
@@ -722,6 +788,7 @@ export default function Home() {
             </b>
           </div>
           <label className="county-selector"><MapPin size={16} /><select aria-label="Wisconsin county" value={county} onChange={e => setCounty(e.target.value)}>{wisconsinCounties.map(c => <option key={c} value={c}>{c} County</option>)}</select></label>
+          {signedIn && <button className="sign-out-button" type="button" onClick={async () => { const response = await fetch("/api/auth/signout", { method: "POST" }); if (response.ok) window.location.reload(); }}>Sign out</button>}
           <button
             className="primary compact"
             aria-label="Log a catch"
@@ -733,19 +800,19 @@ export default function Home() {
         <main>
           <div className="page-heading">
             <div>
-              <div className="eyebrow">THE WATER IS CALLING</div>
+              <div className="eyebrow">YOUR FISHING FORECAST</div>
               <h1>
                 {tab === "journal"
-                  ? "Every catch tells a story."
+                  ? "Your catch journal."
                   : tab === "saved"
-                    ? "Your kind of water."
+                    ? "Your saved waters."
                     : tab === "waters"
-                      ? "Find your next spot."
-                      : "Make your next cast count."}
+                      ? "Explore local waters."
+                      : "Wisconsin fishing forecast"}
               </h1>
               <p>
                 {tab === "forecast"
-                  ? "Your local conditions, the right species, and a little better timing."
+                  ? "Explore nearby waters, compare species-aware bite forecasts, and plan your next cast."
                   : tab === "journal"
                     ? "Keep the details. Discover what works for you."
                     : "Explore nearby water and keep your favorite places close."}
@@ -778,7 +845,7 @@ export default function Home() {
             </div>
           </div>
           {["forecast", "waters", "saved"].includes(tab) && <div className="lake-location-bar">
-            <MapPin size={22} /><div><b>{county} County, Wisconsin</b><p>{countyBusy ? "Loading water directory…" : "Choose your water · Lakes.xlsx"}</p></div>
+            <MapPin size={22} /><div><b>{county} County, Wisconsin</b><p>{countyBusy ? "Loading water directory…" : "Choose your water"}</p></div>
             <select aria-label="Lake or body of water" disabled={countyBusy || !waters.length} value={waters.some(w => w.id === selected.id) ? selected.id : ""} onChange={e => { const water = waters.find(w => w.id === e.target.value); if (water) selectWater(water); }}>
               <option value="" disabled>{countyBusy ? "Loading…" : "No waters available"}</option>
               {waters.map(w => <option key={w.id} value={w.id}>{w.name}{/unnamed/i.test(w.name) ? ` · ${w.wbic ?? w.id}` : ""}</option>)}
@@ -819,22 +886,16 @@ export default function Home() {
               </span>
             </div>
           )}
-          {["forecast", "waters"].includes(tab) && <section className="card water-gauge" aria-label="Water temperature">
-            <div><span className="eyebrow">WATER TEMPERATURE</span><h3>{selected.name}</h3></div>
-            <div><strong>{gaugeTemperature === undefined ? "Unavailable" : Math.round(gaugeTemperature * 9 / 5 + 32) + "°F"}</strong>{gaugeTemperature !== undefined && <span>{observedWaterTemp === undefined ? "Estimated" : "Measured"}</span>}</div>
-            {gaugeTemperature !== undefined && <meter min="32" max="104" value={Math.round(Math.max(32, gaugeTemperature * 9 / 5 + 32))} aria-label="Water temperature in Fahrenheit" />}
-            <p>{observedWaterTemp !== undefined && measurement ? <><a href={measurement.sourceUrl} target="_blank" rel="noreferrer">Measurement source ↗</a> · {new Date(measurement.observedAt).toLocaleString()}</> : <>Local air temperature + seasonal baseline. No recent verified measurement for this lake.{data.updated && " Open-Meteo · " + new Date(data.updated).toLocaleString()}</>}</p>
-          </section>}
           {storageNotice && (
             <div className="notice" role="status">
               {storageNotice}{" "}
               {needsSignIn && (
                 <a
                   className="sign-in-link"
-                  href="/signin-with-chatgpt?return_to=/"
+                  href="/api/auth/google/start"
                   target="_top"
                 >
-                  Sign in to your journal ↗
+                  Sign in with Google ↗
                 </a>
               )}
             </div>
@@ -910,7 +971,7 @@ export default function Home() {
                       </button>
                       {forecastMode === "fish" && (
                         <a className="tie-on-link" href="#tackle">
-                          <Fish size={15} /> Tie on:{" "}
+                          <FishIcon size={15} /> Tie on:{" "}
                           {tackle[target].lures[0].name}{" "}
                           <ArrowUpRight size={14} />
                         </a>
@@ -918,6 +979,7 @@ export default function Home() {
                     </div>
                     <div
                       className="score-ring"
+                      aria-label={`${forecastMode === "fish" ? "Activity" : "Water activity"}: ${best[0]?.score ?? "Unavailable"} out of 100`}
                       style={
                         {
                           "--score": `${best[0]?.score ?? 0}%`,
@@ -926,11 +988,15 @@ export default function Home() {
                     >
                       <div>
                         <strong>{best[0]?.score ?? "—"}</strong>
-                        <span>
-                          {forecastMode === "fish" ? "ACTIVITY" : "WATER ACTIVITY"} / 100
-                        </span>
                       </div>
                     </div>
+                  </div>
+                  <div className="window-water-temp" aria-label="Water temperature at the selected water">
+                    <Thermometer size={17} aria-hidden="true" />
+                    <span>Water temperature</span>
+                    <strong>{gaugeTemperature === undefined ? "Unavailable" : `${Math.round(gaugeTemperature * 9 / 5 + 32)}°F`}</strong>
+                    {gaugeTemperature !== undefined && <small>{observedWaterTemp === undefined ? "Estimated from local air and season" : `Measured ${measurement ? new Date(measurement.observedAt).toLocaleString() : ""}`}</small>}
+                    {observedWaterTemp !== undefined && measurement && <a href={measurement.sourceUrl} target="_blank" rel="noreferrer">Source ↗</a>}
                   </div>
                   <div className="recommend-footer">
                     <span>
@@ -955,7 +1021,7 @@ export default function Home() {
                         ? "Worth a cast"
                         : "Fish documented here"}
                     </h3>
-                    <Fish size={19} />
+                    <FishIcon size={19} />
                   </div>
                   <p className="muted" role="status">{fishMessage}</p>
                   <p className="muted">
@@ -1161,13 +1227,15 @@ export default function Home() {
                     <FishingMap
                       waters={waters}
                       selected={selected}
-                      onSelect={setSelected}
+                      onSelect={selectWater}
+                      userLocation={userLocation}
                     />
                     <div className="map-chip">
                       <Layers size={14} />
                       {selected.name}
                     </div>
                   </div>
+                  <LocationPanel location={userLocation} county={locationCounty} selected={selected} locating={locating} status={locationStatus} onLocate={locate} />
                   <div className="water-preview">
                     {waters.slice(0, 2).map((w) => (
                       <div key={w.id}>
@@ -1178,7 +1246,7 @@ export default function Home() {
                           <span>
                             <b>{w.name}</b>
                             <small>
-                              {w.kind} · {distance(place, w).toFixed(1)} mi away
+                              {w.kind} · {waterDistanceLabel(userLocation ?? place, w)}
                             </small>
                           </span>
                         </button>
@@ -1346,12 +1414,12 @@ export default function Home() {
                         }
                         key={w.id}
                       >
-                        <button onClick={() => setSelected(w)}>
+                        <button onClick={() => selectWater(w)}>
                           <MapPin size={22} />
                           <div>
                             <h3>{w.name}</h3>
                             <p>
-                              {w.kind} · {distance(place, w).toFixed(1)} mi
+                              {w.kind} · {waterDistanceLabel(userLocation ?? place, w)}
                             </p>
                             <small>{w.source}</small>
                           </div>
@@ -1378,9 +1446,11 @@ export default function Home() {
                     <FishingMap
                       waters={tab === "saved" ? favorites : waters}
                       selected={selected}
-                      onSelect={setSelected}
+                      onSelect={selectWater}
+                      userLocation={userLocation}
                     />
                   </div>
+                  <LocationPanel location={userLocation} county={locationCounty} selected={selected} locating={locating} status={locationStatus} onLocate={locate} />
                   <div className="map-actions">
                     <button
                       className="primary"
@@ -1402,14 +1472,6 @@ export default function Home() {
                         visiting.
                       </p>
                     </div>
-                    <a
-                      className="secondary"
-                      href={`https://www.google.com/maps/dir/?api=1&destination=${selected.lat},${selected.lon}`}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      <Navigation size={16} /> Directions
-                    </a>
                   </div>
                 </div>
               </div>
@@ -1451,7 +1513,7 @@ export default function Home() {
                 </div>
                 {catches.length === 0 ? (
                   <div className="empty journal-empty">
-                    <Fish size={44} />
+                    <FishIcon size={44} />
                     <h2>The first catch is the beginning.</h2>
                     <p>
                       Log what you caught, where you were, and what worked.
@@ -1478,7 +1540,7 @@ export default function Home() {
                           />
                         ) : (
                           <div className="catch-art">
-                            <Fish size={32} />
+                            <FishIcon size={32} />
                           </div>
                         )}
                         <div>
@@ -1516,10 +1578,14 @@ export default function Home() {
           {["forecast", "waters", "saved"].includes(tab) && <WaterEvidence water={selected} waters={waters} onSelect={selectWater} county={county} loading={countyBusy} message={countyMessage} onRetry={() => setRevision(v => v + 1)} reports={biteReports} journalNotice={storageNotice} onLog={() => setLogOpen(true)} />}
           <footer>
             <p className="site-credit">
-              Castline field notes · made for time on the water.
+              Castline · Local fishing forecasts
             </p>
+            <nav className="footer-links" aria-label="Site policies">
+              <a href="/privacy">Privacy</a>
+              <a href="/terms">Terms</a>
+            </nav>
             <span>
-              <Fish size={15} /> A better day starts with a little insight.
+              <FishIcon size={15} /> {BRAND_SLOGAN}
             </span>
             <button onClick={() => setInfo(true)}>
               {data.source} <Info size={14} />
@@ -1529,9 +1595,9 @@ export default function Home() {
       </div>
       <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
         <DialogContent>
-          <DialogTitle>Where are you fishing?</DialogTitle>
+          <DialogTitle>Choose your forecast location</DialogTitle>
           <DialogDescription>
-            Search a town or use your current location.
+            Search a town or use your current location to see local conditions.
           </DialogDescription>
           <button className="secondary" onClick={locate}>
             <Navigation size={18} /> Use my location
@@ -1574,9 +1640,9 @@ export default function Home() {
         }}
       >
         <DialogContent className="catch-modal">
-          <DialogTitle>One for the journal.</DialogTitle>
+          <DialogTitle>Log a catch</DialogTitle>
           <DialogDescription>
-            Capture the details while they’re fresh.
+            Record the water, bait, and conditions to track what works for you.
           </DialogDescription>
           <form
             key={`${logOpen}-${draftLure?.target ?? target}-${draftLure?.name ?? "blank"}`}
@@ -1691,9 +1757,9 @@ export default function Home() {
       </Dialog>
       <Dialog open={info} onOpenChange={setInfo}>
         <DialogContent>
-          <DialogTitle>Read the conditions. Keep the uncertainty.</DialogTitle>
+          <DialogTitle>How predictions work</DialogTitle>
           <DialogDescription>
-            Activity is a heuristic index, not a probability of catching fish.
+            Compare predicted activity to plan your next cast. Scores estimate favorable conditions, not the probability of a catch.
           </DialogDescription>
           <div className="method">
             <h3>Species-aware, hour by hour</h3>

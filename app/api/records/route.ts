@@ -31,7 +31,7 @@ const catchSchema = z.object({
 });
 export async function GET(r: Request) {
   try {
-    const { db, owner } = storage(r);
+    const { db, owner } = await storage(r);
     const { results } = await db
       .prepare(
         "SELECT id,kind,payload,created FROM records WHERE owner = ? ORDER BY created DESC LIMIT 500",
@@ -54,7 +54,7 @@ export async function GET(r: Request) {
 }
 export async function POST(r: Request) {
   try {
-    const { db, owner } = storage(r);
+    const { db, owner } = await storage(r);
     if (Number(r.headers.get("content-length")) > 20000)
       return Response.json({ error: "Too large" }, { status: 413 });
     const raw = await r.text();
@@ -95,7 +95,7 @@ export async function POST(r: Request) {
 }
 export async function DELETE(r: Request) {
   try {
-    const { db, owner, bucket } = storage(r);
+    const { db, owner, bucket } = await storage(r);
     const id = new URL(r.url).searchParams.get("id");
     if (!id) return Response.json({ error: "Missing id" }, { status: 400 });
     const record = await db

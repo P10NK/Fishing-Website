@@ -1,5 +1,6 @@
+import { FishIcon } from "@/components/fish-icon";
 import { useEffect, useState } from "react";
-import { Fish, ArrowUpRight, BookOpen, LoaderCircle } from "lucide-react";
+import { ArrowUpRight, BookOpen, LoaderCircle } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -74,7 +75,7 @@ export function WaterEvidence({
           <p>
             {profile
               ? `${profile.county} County, Wisconsin · DNR waterbody ${profile.wbic}`
-              : `${(water.counties ?? [water.county ?? county]).join(", ")} · Wisconsin · Lakes.xlsx`}
+              : `${(water.counties ?? [water.county ?? county]).join(", ")} · Wisconsin`}
           </p>
         </div>
         <div className="water-picker-grid">
@@ -116,7 +117,7 @@ export function WaterEvidence({
       <div className="water-evidence-grid">
         <div className="water-evidence-column">
           <h3>
-            <Fish size={19} /> Fish documented here
+            <FishIcon size={19} /> Fish documented here
           </h3>
           {documented.length ? (
             <>
@@ -195,8 +196,8 @@ export function WaterEvidence({
             </p>
             <p>
               County coverage: {county}. Change the county above to load the
-              corresponding Lakes.xlsx directory. Shared waters appear under
-              every county assigned in the workbook. Fish evidence is loaded
+              corresponding water directory. Shared waters appear under every
+              county assigned in the source directory. Fish evidence is loaded
               separately from Wisconsin DNR sources using the WBIC.
             </p>
             <a

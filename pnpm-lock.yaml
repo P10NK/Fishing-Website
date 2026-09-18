@@ -74,6 +74,9 @@ importers:
       sonner:
         specifier: ^2.0.8
         version: 2.0.8(@types/react@19.2.14)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      suncalc:
+        specifier: ^2.0.2
+        version: 2.0.2
       tailwind-merge:
         specifier: 3.6.0
         version: 3.6.0
@@ -4370,6 +4373,9 @@ packages:
         optional: true
       babel-plugin-macros:
         optional: true
+
+  suncalc@2.0.2:
+    resolution: {integrity: sha512-cedP91TuhxggoERke/jLkUVr/VMUifEMz1OkxfBZezvOFQdk8LSe9CFv7/Ov0Frn2tc2YUs+44oSrXeNEyTyGQ==}
 
   supports-color@10.2.2:
     resolution: {integrity: sha512-SS+jx45GF1QjgEXQx4NJZV9ImqmO2NPz5FNsIHrsDjh2YsHnawpan7SNQ1o8NuhrbHZy9AZhIoCUiCeaW/C80g==}
@@ -8774,6 +8780,8 @@ snapshots:
       react: 19.2.6
     optionalDependencies:
       '@babel/core': 7.29.0(supports-color@10.2.2)
+
+  suncalc@2.0.2: {}
 
   supports-color@10.2.2: {}
 
